@@ -152,45 +152,79 @@
 * Containers have an access policy of Private, Blob (anonymous read access for blocks only), Container (anonymous read access for containers + blobs)
 * Store accounts end with core.windows.net
 * Standard or Premium
+  * It is not possible to convert a Standard storage account to Premium storage account or vice versa. You must create a new storage account with the desired type and copy data, if applicable, to a new storage account.
 ### Premium Storage Accounts
-* Page blobs only
+* I/O-intensive applications, like databases
+* virtual machines that use Premium storage for all disks qualify for a 99.99% SLA, even when running outside an availability set.
+* Page blobs only (Azure virtual machine disks)
 * Backed by SSD
 * LRS replication only
 ### Types
-* GPv1 -> Legacy, no support for tiering
+* GPv1 -> Legacy, no tiering
 * Blob -> Old don't use, less features, no tiering
 * GPv2 -> everything can go here
-* Block Blob Storage -> blog only w/ premium performance
-* FileStorage -> premium performance for files
+* Block Blob Storage -> blob only with premium performance. Recommended for scenarios with high transactions rates, using smaller objects, or requiring consistently low storage latency.
+* File Storage -> premium performance for files. Recommended for enterprise or high performance scale applications.
 ### Tiers
 * Hot
 * Cold -> ideal for data remaining cool for 30+ days
-* Archive -> Set at blob level only
-### Replication
-* LRS - 3 times single data center
-* ZRS - GPv2 only, 3AZ
-* GRS - 2nd region
-* RA-GRS - 2nd region and read
+* Archive -> Set at blob level only (only GPv2)
+### Redundancy
+https://docs.microsoft.com/es-es/azure/storage/common/storage-redundancy
+
+* LRS - 3 times single data center (synch)
+* ZRS - 3AZs same region (synch)
+* GRS/RA-GRS - LRS + async copy to a single physical location in the secondary region and then LRS on secondary
+* GZRS/RA-GZRS - ZRS + async copy to a single physical location in the secondary region and then LRS on secondary
+
+If you enable RA-GRS and your primary endpoint for the Blob service is myaccount.blob.core.windows.net, then your secondary endpoint is myaccount-secondary.blob.core.windows.net. The access keys for your storage account are the same for both the primary and secondary endpoints.
+
+The primary difference between GRS and GZRS is how data is replicated in the primary region. Within the secondary location, data is always replicated synchronously three times using LRS. LRS in the secondary region protects your data against hardware failures.
+
+If the primary region becomes unavailable, you can choose to fail over to the secondary region. After the failover has completed, the secondary region becomes the primary region, and you can again read and write data. 
+
+Azure Files does not support read-access geo-redundant storage (RA-GRS) and read-access geo-zone-redundant storage (RA-GZRS).
+
+* GPv1 -> LRS + GRS/RA-GRS
+* Blob -> LRS + GRS/RA-GRS
+* GPv2 -> ALL
+* Block Blob Storage -> LRS + ZRS
+* File Storage -> LRS + ZRS
+
 ### Shared Access Signatures
-* Account SAS (blob, file, table, queue) and Service SAS
+* Account SAS (blob, file, table, queue), Service SAS and User delegation SAS
 * Uses hash-based message encryption
 * Limit to set of IPs and a secure protocol
-### Stored Access Policies
-* Supported only for Service SAS
-* SAS associated with policy inherit start/expiry team and permissions and revocation
+* Stored Access Policies
+  * Supported only for Service SAS
+  * SAS associated with policy inherit start/expiry team and permissions and revocation
 * Can be created with GUI using Storage Explorer
 ### Custom Domains
 * Can be used to access blob data in storage account
 * One per storage account
 * Direct (create each CNAME) or indirect (no downtime and uses ASVERIFY subdomain)
+* This mapping works only for subdomains (for example: www.contoso.com). If you want your web endpoint to be available on the root domain (for example: contoso.com), then you'll have to use Azure CDN
 ### Special Features
 * Require secure transfer
 * Allows access from all networks or a single Vnet
 * Soft delete for blobs
 * Hierarchal namespace for DataLakes V2
+### Pricing and Billing
+* Geo-Replication data transfer costs: This charge only applies to accounts with geo-replication configured, including GRS and RA-GRS. Geo-replication data transfer incurs a per-gigabyte charge.
+* Outbound data transfer costs: Outbound data transfers (data that is transferred out of an Azure region) incur billing for bandwidth usage on a per-gigabyte basis, consistent with general-purpose storage accounts.
+* Changing the storage tier: Changing the account storage tier from cool to hot incurs a charge equal to reading all the data existing in the storage account. However, changing the account storage tier from hot to cool incurs a charge equal to writing all the data into the cool tier (GPv2 accounts only).
 ### PowerShell CLI Commands
-* New-AzStorageAccount -ResourceGroupName -Name -Location -SkuName (Standard_LRS, etc) -kind (StorageV2, etc)
-* Az storage create --name --resource-group --location --sku --kind
+
+```
+Get-AzStorageAccountNameAvailability -Name ‘mystorageaccount’
+New-AzStorageAccount -ResourceGroupName -Name -Location -SkuName (Standard_LRS, etc) -kind (StorageV2, etc)
+Get-AzureRmStorageAccount -ResourceGroupName "RG01" -AccountName “mystorageaccount”
+Set-AzStorageAccount -ResourceGroupName "MyResourceGroup" -AccountName “mystorageaccount” -Type "Standard_RAGRS"
+```
+
+### Metrics
+* Capacity metrics values are sent to Azure Monitor every hour. The values are refreshed daily.
+* Transaction metrics are sent from Azure Storage to Azure Monitor every minute.
 # Azure Storage Explorer
 ### General	
 * GUI-based tool to navigate Azure storage
@@ -208,41 +242,12 @@
 ### WAImportExport
 * v1 for Blob and v2 for File
 * PrepImport /j:<journal_name> /sk:<storage account key> /srcdir:<on_prem> /dstdir:<container>
-# Azure Backup
-### General
-* Replicate using LRS or GRS
-* No charge for data transfer
-* 9,999 recover points for protected VM
-* MARS, DPM, MABS
-* Daily, weekly, monthly, yearly schedule and retention
-### On-prem (MARS, DPM, MABS)
-* Files and Folders
-* Hyper V
-* VMWare
-* SQL
-* SharePoint
-* Exchange
-* System State
-* Bare Metal
-### Azure Stack (MABS)
-* Files and Folders
-* SQL Server
-* SharePoint
-* System State
-### Azure
-* VM
-* SQL Server in VM
-* Azure FIleShare
-* Other recovery options
-### Snapshot Recovery
-* Blob snapshot of VM page blob
-* Copy to another region
-* Create new VM from snapshot
 # Azure Virtual Machine
 ### General
 * ACU - 100 for A1
 * Ultra SSD, Premium SSD, Standard SSD, Standard HDD
-* WinRMHTTPS 5986, WinRMHTTP 5985
+* RDP Port 3389
+* WinRM HTTPS 5986, WinRM HTTP 5985 (Certificate on Vault + VM config)
 * Data Disk has max capacity of 32TB
 * OS Disk has max capacity of 2TB
 * Temporary disk persists after successful reboot and uses /dev/sdb and E:
@@ -278,7 +283,7 @@
 * Managed Disks are integrated with VMSS to ensure FD and UD
 * Unmanaged Disks handle RBAC on Storage Account while Managed Disks handle RBAC directly on the Managed Disk
 ### Managed Disk Snapshot
-* Read-only copy of managed disk at a point of time
+* Read-only copy of a single managed disk at a point of time
 * Can be used to create new disks
 ### Managed Disk Image
 * Create an image of all managed disks associated with VM when it is generalized and deallocated
@@ -304,188 +309,17 @@
 * Metrics can be infrastructure or application metrics
 ### PowerShell / CLI
 * Get-AzRemoteDesktopFile - ResourceGroupName -Name -Launch
-# Public Ips
-### General
-* Basic SKU can be dynamic or static and are open by default
-* Standard SKU is only static, supports AZ, and are closed by default
-* Load Balancer SKU and Public IP SKU must match
-# Virtual Network
-### General
-* New-AzVirtualNetwork -ResourceGroupName -Name -Location -AddressPrefix
-* Add-AzVirtualNetworkSubnetConfig -Name -AddressPrefix -VirtualNetwork <Vnet_object>
-* <vnet_object> | Set-AzVirtualNetwork
-* Azure reserves first three IPs and last IPs
-* Apply DNS to NIC or VNET
-### Network Security Group
-* Rules evaluated by priority 100-4096 with lowest being evaluated first
-* Service Tags of VirtualNetwork, AzureLB, Internet
-* 100 NSGs per Sub (raise to 400)
-* 200 NSGs rules per NSG (raise to 500)
-* Vnets per Sub 50 (raise to 500)
-* PIP dynamic 60 PIP reserved 20
-### Vnet Peering
-* Forwarded Traffic - allow VNA in another Vnet to forward traffic to this Vnet over the peering
-* Gateway Transit / Remote Gateway
-* Create using az network peering create
-* Add-AzVirtualNetworkPeering
-### Vnet-to-Vnet
-* Connection between two Vnets in same or different subscriptions that is encrypted with IPSec
-* Uses Virtual Network Gateway and Vnet-to-Vnet connection
-* Requires Route-Based VPN
-# VPN Gateways
-* Basic SKU
-* Route-based VPN doesn't support RADIUS or IKEv2 for P2S and supports 10 tunnels
-* Policy-based VPN supports 1 tunnel and no P2S
-### VpnGw1-3
-* Supports route-based only
-* Up to 30 tunnels, P2S, BGP, active-active, custom IPSec/IKE and ExpressRoute coexistence
-### P2S VPN
-* Supports SSTP, IKEv2, SSL/TLS
-* Authenticate with certificate or RADIUS
-* Basic SKU only support SSTP while VpnGw1+ supports IKEv2
-* Clients download a config file
-# ExpressRoute
-### General
-* Standard is geopolitical region only and premium is global
-* 50Mbps to 10Gbps
-* Unlimited inbound traffic but outbound can be unlimited or metered
-* Microsoft Peering and Private Peering
-* /30 required for BGP peering for each path
-* ASN for Azure is 12076
-# Network Watcher
-### General
-* Requires Network Watcher Agent be installed on Linux/Windows (VM)
-* Enabled on region by region basis and enabled in Network Watcher -> Overview blade
-### Capabilities
-* Topology
-* Connection Monitor - Continuously monitor connections from VM to URI, IP, FQDN
-* IP Flow Verify - Determine why packet allowed or denied and relevant NSG
-* Effective Security Rules - see effective NSG cumulative, subnet, NIC
-* VPN Troubleshooter
-* Packet capture and log to storage account or to VM file system
-* View Azure quotas and limits
-* View and enable NSG flow logs
-* Enable/Disable Diagnostic Logging for networking components
-* Enable and view Traffic Analytics
-### Network Performance Monitor
-* Log Analytics Solution
-* Monitor performance across cloud and on-premises
-* Monitor network connectivity using HTTP, HTTPS, TCP, ICMP
-* Monitor ExpressRoute
-# Azure Load Balancer
-### General
-* Layer 4 (TCP/UDP)
-* Supports IPv4/IPv6
-* Internal or external
-* Uses 5 tuple hash to distribute (source IP/port, dest IP/port, protocol)
-* Supports session affinity (sticky sessions) using 2-tuple or 3-tuple
-* Basic VMs cannot be used as targets
-### Health Probes
-* Basic supports TCP/HTTP and Standard support TCP/HTTP/HTTPS
-* Select port, path (HTTP/HTTPS), internal, unhealthy threshold
-### Rule
-* Port and backend port
-* Backend pool
-* Health probe
-* Session persistence (two-tuple, three tuple)
-* Idle timeout (minutes)
-* Floating IP (SQL AlwaysOn)
-### Basic vs Standard
-* More capacity in standard
-* tandard supports HTTPS in addition to HTTP and TCP
-* Standard supports AZ
-* Standard supports outbound Rules / TCP Reset
-* Standard has SLA of 99.99 w/ 2 health VM
-### Inbound NAT Rule
-* Front-end IP
-* Service
-* Protocol
-* Port
-* Associations
-* Port mapping (def/custom)
-# Azure Application Gateway
-### General
-* Layer 7
-* Cookie-based session affinity
-* SSL offload
-* End to end SSL
-* Comes in standard, standardv2, WAF, WAFv2
-* V2 supports AZ
-* URL-based content filtering
-* Requires its own subnet already exists
-* Connection draining
-### Components
-* Front-end IP -> single public/private IP or both
-* Listener -> port, protocol, host, IP, which further sends based on request routing rule (1 to 1)
-* Request routing rule -> basic or path based
-* Backend pool -> NIC, VMSS, Public IP, Private IP, FQDN, multi-tenant backend
-# Azure Traffic Manager
-### General
-* DNS-level
-* Supports VM, Cloud Services, Azure Web Apps, External Endpoints
-* Internet-facing applications only
-* HTTP/HTTPS GET-only
-#	Azure AD
-###	Send Sign-In and Audit logs to Log Analytics
-* Configure on Azure AD blade
-* Diagnostic Setting
-* Send to Log Analytics
-### Enterprise State Roaming
-* Requires AAD Premium
-* Synchronize user and app settings to Azure AD and encrypted with Azure RMS
-* Data retained for 90-180 days
-* Enable in Azure AD -> Devices -> Enterprise State Roaming
-# Azure AD Self-Service Password Portal
-### General
-* Enforce one or two authentication methods
-* Option to require user registration and set re-confirmation from 0-730 days
-* Notify users if password reset and all admins if any admin reset
-* Write-back on-prem requires P1 or above
-* Customize help desk link
-### Authentication Methods
-* Mobile phone
-* Office phone
-* Email
-* Security questions
-* Mobile app code
-* Mobile app notification
-### Pricing Details
-* Free < 500,000 objects
-* Basic -> SSPR, AAD Proxy
-* P1 -> Advanced reports, write-back, MFA
-* P2 -> Identity protection, PIM
-# Azure AD PIM
-### PIM Roles
-* PIM Administrator -> manage role assignments in Azure AD and all aspects of PIM
-* Security Administrator -> read info and report and manage AD and O365
-### General
-* Enable PIM must be global admin and becomes PIM Administrator
-### PIM and Azure RBAC
-* Subscription must be enrolled in RBAC
-* Role assignment settings are eligible and active
-### RBAC Settings
-* Allow role to be permanent (eligible or active)
-* Set time for how long eligible or active
-* Require MFA
-* Require justification
-* Require approval
-# Azure Role Based Access Control (RBAC)
-### General
-* Max of 2000 role assignments per subscription
-* Allow only, must use deny assignments to explicity deny something
-* Three authZ models: classic subscription administration roles, Azure RBAC roles, Azure AD Admin roles
-* Owner, contributor, reader, user access administrator
-* Azure AD Global Admin can take control of subs by settings "Global Admin can manage Azure subs and Management Groups" and become User Access Admin for all subs in tenant
-### Role Assignments
-* Security principal -> user, group, service principal, managed identity
-* Role definition (role) -> actions, notactions, dataactions, notdataactions
-* Scope -> management group, subscription, resource group, resource
-### RBAC - Classic Subscription Administrative Roles
-* Account used to sign-up for Azure is Account Administrator/Service Administrator
-* Account Administrator (1), Service Administrator (1), Co-administrator (200)
-* Account Administrator -> billing owner, manage sub lifecycle
-* Service Administrator
-* Co-Administrator -> all but change Service Admin and associate sub w/ different directory
+
+```powershell
+$cred = Get-Credential -UserName azureuser
+$vm = New-AzVMConfig -Name vm01 -VMSize Standard_A1
+$vm = Set-AzVMOperatingSystem -VM $vm -Credential $cred -Windows -ComputerName vm01 -ProvisionVMAgent
+$vm = Set-AzVMSourceImage -VM $vm -PublisherName MicrosoftWindowsServer -Offer WindowsServer -Skus 2016-Datacenter -Version latest
+$vm = Set-AzVMOSDisk -VM $vm -DiskSizeInGB 128 -CreateOption FromImage -Name osdisk -Caching ReadWrite
+$vm = Add-AzVMNetworkInterface -VM $vm -Id $nic.Id
+
+New-AzVM -ResourceGroupName myResourceGroupVM -Location EastUS -VM $vm
+```
 # Azure Instance Metadata Service (IMDS)
 ### General
 * REST endpoint accessible to IaaS VM
@@ -504,155 +338,6 @@
 ### General
 * CanNotDelete and ReadOnly
 * Scope of sub, rg, resource
-# Azure App Services
-### Service Plans
-* 	Free - 10 apps, 1 GB disk
-* Shared - 100 apps, 1GB disk, LB, custom domains
-* Basic - 10GB disk, 3 instances, functions
-* Standard - 50GB, 10 instances, deployment slots, VNET integration, autoscale
-* Premium - 250GB, 20 instances, clone app
-* Isolated - 1TB disk, 100 instances
-* Linux -> docker, ruby/.NET Core/Node.js/PHP
-* All plans but Linux -> .NET, .NET Core, Java, Node.js, PHP, Python
-### Azure Service Environment (ASE)
-* Container for up to 100 single instance App Services in a subscription
-* Goes directly into customer Vnet subnet
-* External or internal
-* High scale, isolation and secure network access, high memory
-* Integrate with WAF
-* Dedicated environment for Windows/Linux Web Apps, Docker, mobile apps, functions
-### Azure Service Plan Metrics - All Plans
-* CPU %
-* Memory %
-* Data In/Data Out
-* Disk queue length
-* HTTP Queue Length
-### Azure Service Plan Metrics - Free/Shared
-* CPU (short - 5 minutes), CPU (Day)
-* Memory
-* Bandwidth (per day)
-* Storage
-###	Azure Service Plan Quote Overage - Free/Shared
-* CPU short/day - 403
-* Memory - restart
-* Bandwidth - 403
-* Filesystem - write fail
-### Azure Web App Diagnostics
-* Application -> Error, Warning, Information, Verbose (Application/)
-* Web Server -> Web Server Logging (http/RawLogs), Dedicated Error Message (DetailedError/), Failed Request Tracing (W3SVC####/), Deployment (/Git)
-* Obtain via FTP or CLI (az webapp log download)
-### Azure Web App Application Insights Alerts
-* Metrics
-* Web Tests
-* Proactive Diagnostics
-### Application Setting
-* Configure version of .NET and PHP
-* Turn Java or Python on (off by def)
-* Change to 64-bit platform (basic+)
-* Turn on web socket
-* Enable apps to always run (basic+)
-* Auto-swap and move deployment into slot to prod automatically
-* Custom domains associated w/ web apps
-* Cookie affinity (on by def)
-###	Connection String
-* Configure db per deployment slot or global
-* Variable instead of file
-* SQLCONNSTR_, MYSQLCONNSTR_, SQLAZURECONNSTR_, CUSTOMCONNSTR_
-### Handler Mapping
-* External script processes
-* Extension, handler path, argument
-### Virtual Application
-* Subdirectories of app that do something specific
-* Virtual directory, physical path, application
-### Azure App Services - Deployment Slots (Not Swapped)
-* Publishing endpoints
-* Custom domains
-* SSL Cert and binding
-* Scale setting
-* Webjob scheduling
-* Swap with preview or swap
-# WebJob
-### General
-* Run program or script in same context as Web App
-* Continuous (start immediately, runs on all instances, remote debug)
-* Triggered (manual/scheduled, single instance, no remote debug)
-* CMD, Bash, PowerShell, Python, PHP, Node.js, Java
-# Azure Functions App
-### General
-* Name is unique and ends with .azurewebsite.net
-* Consumption or App Service Plan
-* Requires storage account w/ Blob, Queue, and Tables
-* Pay for execution time and number of executions
-* Linux supports .NET, JavaScript, Python, and Docker
-* Windows supports .NET, JavaScript, Java, PowerShell
-# Event Hub
-### General
-* Stream data to analytics
-* Throughput units are preallocated or set to a maximum
-* End with .servicebus.windows.net
-* Basic SKU - 1 consumer group, 100 connections
-* Standard SKU - 20 consumer group, 1000 connections, AZ, georecovery
-* Namespace -> Event Hub -> Consumer Group
-### Namespace
-* Shared access policy
-* Geo-recovery (paired region)
-* Firewall (allow Vnet, IP)
-* Create event hub
-### Entity
-* Shared access policy
-* Enable/disable hub
-* Partition count
-* Message retention (7 days by def)
-# Event Grid
-### General
-* Similar to CloudWatch Events and Lambda
-* Event Sources -> Event Grid -> Event Handlers
-* React to state changes
-* Publisher/Subscriper model
-* Limit is 64KB per event
-### Handlers
-* Azure Automation
-* Azure Functions
-* Event Hub
-* Hybrid Connections
-* Logic App
-* Microsoft Flow
-* Queue Storage
-* Webhook
-### Sources
-* Azure Subscription / Resource Group (Management)
-* Container Registry
-* Custom Topics
-* Event Hub
-* IoT Hub
-* Media Services
-* Service Bus
-* Storage Blob
-* Azure Maps
-# Azure Service Bus
-### General
-* Basic -> shared capacity, 256KB message size, queues, variable pricing
-* Standard -> same as basic but topics, message operations
-* Premium -> standard and dedicated capacity, 1024KB message size, georecovery
-### Queue
-* Max size 1GB - 5GB
-* Message TTL (def 14 days)
-* Lock duration (def 60 sec)
-* Duplicate detection
-* Dead letter queue
-* Sessions (FIFO)
-* High throughput (partitioning)
-### Topic
-* Max size 1GB - 5GB
-* Message TTL
-* Duplicate detection
-* Partitioning
-* Subs can be filtered to certain operations in a topic
-# Azure Relay Service
-### General
-* Allows messages to be received by a public endpoint and relayed to on-premises applications
-* Application installed on-premises and established outgoing session to listen for messages
-* Applications on-premises are WCF and Hybrid Connections (Web Sockets)
 # Azure SQL Database
 ### General
 * Single database, elastic pool, and managed instance
@@ -703,30 +388,6 @@
 * Single partition limited to 10GB
 * Partitions limited to 400 requests/s (RU)
 * For unique key choose property you filter on
-# Azure Recovery Vault
-### General 
-* Logical container for backup
-* 500 vaults per sub
-* Replicates LRS or GRS
-# Azure Migrate
-### General
-*	Assess on-premises VM for Azure Migrate (VMWare only)
-* Provides size recommendations, monthly costs estimates, and visualize dependencies
-* Only create in East US and Central West US
-* OVA installed on VMWare Server
-* Comfort factor can be adjust by 1.3x
-# Azure Site Recover (ASR)
-### Scenarios
-* Region to region
-* VMWare/Hyper V/physical servers/Azure Stack to Azure
-* VMWare/Hyper V/SCVMM/Physical servers to second data center
-### Replication Policy
-* Recovery point retention is default of 24 hours (oldest 72 hours) for crash consistent and 60 minutes for app consistent
-* Associate with a configuration server
-### Azure Requirements
-* Recovery Services Vault
-* V1 Storage Account in same region as Vault
-* Existing Vnet
 # Commands and CLI
 ### Enable Diagnostic Logging
 * PS - Set-AzDiagnosticSetting
@@ -770,6 +431,7 @@
 ### Create image
 * New-AzImage -Image $config
 ### Create VM from VHD
+You can only use Generation 1 virtual machines that use the VHD file format.
 * Add-AzVhd -ResourceGroupName -Destination -LocalFilePath
 * New-AzDiskConfig -AccountType Standard_LRS -Location -CreateOption Import -SourceURI
 * New-AzDisk -DiskName -Disk <disk_config> -ResourceGroupName
